@@ -89,15 +89,3 @@ async function handleRequest(request, response) {
 	sendJson(response, 404, { error: "Not found" });
 }
 
-const server = http.createServer((request, response) => {
-	handleRequest(request, response).catch((error) => {
-		const statusCode = error.statusCode || 502;
-		const message = statusCode === 502 ? "ESP32 API is unavailable" : error.message;
-		sendJson(response, statusCode, { error: message });
-	});
-});
-
-server.listen(port, "127.0.0.1", () => {
-	console.log(`API listening at http://127.0.0.1:${port}`);
-	console.log(`ESP32 API: ${esp32Url}`);
-});
