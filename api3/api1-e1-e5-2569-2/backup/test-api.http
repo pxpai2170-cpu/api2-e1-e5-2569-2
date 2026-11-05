@@ -1,0 +1,48 @@
+###
+@baseUrl = http://localhost:7001
+
+GET {{baseUrl}}/api/list
+
+###
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "admin1234"
+}
+
+###
+GET {{baseUrl}}/api/listUsers/2
+
+###
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4ODA2MzUwOCwiZXhwIjoxNzg4MDY3MTA4fQ.mwn9n57o7UDOVOzQXas
+
+###
+GET {{baseUrl}}/api/listUsers
+
+
+###
+GET {{baseUrl}}/api/listCriteria
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4ODA2NDQ4NywiZXhwIjoxNzg4MDY4MDg3fQ.x7vQiNsJBiC1WqWu4Wg5UjyUuPvgGAuXuYeIp0kkePU
+
+###
+POST {{baseUrl}}/api/addCriteria
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4ODA2NDQ4NywiZXhwIjoxNzg4MDY4MDg3fQ.x7vQiNsJBiC1WqWu4Wg5UjyUuPvgGAuXuYeIp0kkePU
+Content-Type: application/json
+
+{
+    "name": "Criteria 1",
+    "description": "Description for Criteria 1"
+}
+###
+PUT {{baseUrl}}/api/editUser/2
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsImlhdCI6MTc4ODA2NDQ4NywiZXhwIjoxNzg4MDY4MDg3fQ.x7vQiNsJBiC1WqWu4Wg5UjyUuPvgGAuXuYeIp0kkePU
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "admin1234",
+    "role": "admin"
+}   

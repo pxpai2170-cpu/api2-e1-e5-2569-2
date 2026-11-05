@@ -1,0 +1,384 @@
+### ════════════════════════════════════════════════════════════════
+### api_single_test.http
+### ไฟล์ทดสอบ API ทั้งหมด — BPES-App-Single-Page (ระบบประเมินผลการปฏิบัติงานเบื้องต้น)
+### ตรวจครบทั้ง 18 endpoint จริงจากไฟล์ index.js (แบ่ง 6 กลุ่ม)
+### ════════════════════════════════════════════════════════════════
+###
+### วิธีใช้งาน (สอนนักเรียน):
+###   1. ติดตั้ง VS Code Extension ชื่อ "REST Client" (ผู้เขียน: Huachao Mao)
+###   2. เตรียมฐานข้อมูล: import schema.sql เข้า MySQL (มี seed user ให้แล้ว)
+###   3. รัน backend: npm start  →  ต้องเห็น "http://localhost:3001"
+###   4. เปิดไฟล์นี้ใน VS Code จะเห็นตัวหนังสือ "Send Request" สีเทาอยู่เหนือทุก request
+###      คลิกเพื่อยิง request นั้น (หรือวางเคอร์เซอร์แล้วกด Ctrl+Alt+R)
+###   5. ต้องรันตามลำดับบนลงล่าง! เพราะ request ที่ต้อง login ก่อน
+###      จะ "ยืม" token จาก request login ด้านบนอัตโนมัติ (ดูตัวแปร @xxxToken ด้านล่าง)
+###
+### บัญชีทดสอบ (จาก schema.sql — Seed Data):
+###   admin  / admin1234   → role: admin      (ฝ่ายบุคลากร คุมผู้ใช้ + หัวข้อประเมิน)
+###   eval01 / eval1234    → role: evaluator  (กรรมการ ให้คะแนน + ดูรายงาน)
+###   emp001 / emp1234     → role: evaluatee  (ผู้รับการประเมิน id=3)
+###   emp002 / emp1234     → role: evaluatee  (ผู้รับการประเมิน id=4)
+###
+### ⚠️ หมายเหตุสำคัญ (ตรวจจากโค้ดจริง ไม่ใช่สมมติ):
+###   - พารามิเตอร์ "year" ในระบบนี้เป็น "ปี ค.ศ." (Gregorian) ไม่ใช่ "ปี พ.ศ." เพราะฟังก์ชัน
+###     currentYear() ใช้ new Date().getFullYear() ตรง ๆ ไม่มีการ +543 แต่อย่างใด
+###     → ถ้าไม่ส่ง year มา ระบบจะ default เป็นปีปัจจุบันแบบ ค.ศ. เช่น 2026 (ไม่ใช่ 2569)
+###   - Criteria "weight" ที่ส่งไปตอน POST/PUT จะถูก "เพิกเฉย" เสมอ เพราะเซิร์ฟเวอร์บังคับใช้
+###     FIXED_WEIGHT = 1 ทุกหัวข้อ (ดูรายละเอียดในคู่มือ endpoint-catalog หัวข้อ "เอกสารเดิมไม่ตรงกับโค้ดจริง")
+### ════════════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:7002
+@year    = 2026
+
+### ตัวแปร token ของแต่ละสิทธิ์ — ดึงจาก response ของ request login ด้านล่างอัตโนมัติ
+### (ต้องรัน loginAdmin / loginEvaluator / loginEvaluatee ก่อน ตัวแปรเหล่านี้ถึงจะมีค่า)
+@adminToken = {{loginAdmin.response.body.$.data.token}}
+@evaluatorToken = {{loginEvaluator.response.body.$.data.token}}
+@evaluateeToken = {{loginEvaluatee.response.body.$.data.token}}
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 1 — Auth (2 endpoint: login, me)
+### ════════════════════════════════════════════════════════════════
+
+### 1.1 POST /api/auth/login — เข้าสู่ระบบด้วย admin (✅ สำเร็จ)
+# @name loginAdmin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin1234"
+}
+
+### 1.2 POST /api/auth/login — เข้าสู่ระบบด้วย eval01 (กรรมการ) (✅ สำเร็จ)
+# @name loginEvaluator
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "eval01",
+  "password": "eval1234"
+}
+
+### 1.3 POST /api/auth/login — เข้าสู่ระบบด้วย emp001 (ผู้รับการประเมิน) (✅ สำเร็จ)
+# @name loginEvaluatee
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "emp001",
+  "password": "emp1234"
+}
+
+### 1.4 POST /api/auth/login — ❌ ขาด password (คาดหวัง 400 "กรุณากรอก username และ password")
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin"
+}
+
+### 1.5 POST /api/auth/login — ❌ รหัสผ่านผิด (คาดหวัง 401 "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "ผิดแน่นอน"
+}
+
+### 1.6 GET /api/auth/me — ดูข้อมูลตัวเอง (✅ ต้องแนบ token)
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{adminToken}}
+
+### 1.7 GET /api/auth/me — ❌ ไม่แนบ token เลย (คาดหวัง 401 "กรุณาเข้าสู่ระบบก่อน (ไม่พบ Token)")
+GET {{baseUrl}}/api/auth/me
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 2 — Users (4 endpoint: admin เท่านั้นทุกเส้นทาง)
+### ════════════════════════════════════════════════════════════════
+
+### 2.1 GET /api/users — ดูผู้ใช้ทั้งหมด (ยกเว้น admin) (✅ admin)
+GET {{baseUrl}}/api/users
+Authorization: Bearer {{adminToken}}
+
+### 2.2 GET /api/users?role=evaluatee — กรองเฉพาะผู้รับการประเมิน (✅ admin)
+GET {{baseUrl}}/api/users?role=evaluatee
+Authorization: Bearer {{adminToken}}
+
+### 2.3 POST /api/users — เพิ่มผู้ใช้ใหม่ (✅ admin)
+# @name createUser
+POST {{baseUrl}}/api/users
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "username": "emp009",
+  "password": "emp1234",
+  "full_name": "วิชัย มุ่งมั่น",
+  "role": "evaluatee",
+  "department": "ฝ่ายเทคโนโลยีสารสนเทศ",
+  "position": "นักวิเคราะห์ระบบ"
+}
+
+### 2.4 PUT /api/users/1 (สมมติ id ที่สร้างจาก 2.3) — แก้ไขข้อมูล (✅ admin)
+### ⚠️ แก้ id ด้านล่างให้ตรงกับ id ที่ได้จาก response ของ 2.3 ก่อนรัน
+PUT {{baseUrl}}/api/users/27
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "full_name": "วิชัย มุ่งมั่น (แก้ไขแล้ว)222",
+  "department": "ฝ่ายเทคโนโลยีสารสนเทศ21",
+  "position": "นักวิเคราะห์ระบบอาวุโส21"
+}
+
+### 2.5 DELETE /api/users/5 — ลบผู้ใช้ (✅ admin) — ⚠️ แก้ id ให้ตรงกับที่สร้างจาก 2.3
+DELETE {{baseUrl}}/api/users/8
+Authorization: Bearer {{adminToken}}
+
+### 2.6 POST /api/users — ❌ ข้อมูลไม่ครบ (คาดหวัง 400 "ข้อมูลไม่ครบ (username, password, full_name, role)")
+POST {{baseUrl}}/api/users
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "username": "emp004"
+}
+
+### 2.7 GET /api/users — ❌ ใช้ token ของ evaluator ที่ไม่ใช่ admin (คาดหวัง 403 "ไม่มีสิทธิ์เข้าถึงข้อมูลนี้")
+GET {{baseUrl}}/api/users
+Authorization: Bearer {{evaluatorToken}}
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 3 — Criteria (4 endpoint: GET ทุก role ที่ login แล้ว, POST/PUT/DELETE admin เท่านั้น)
+### ════════════════════════════════════════════════════════════════
+
+### 3.1 GET /api/criteria — ดูหัวข้อประเมินทั้งหมด (✅ ทุก role ที่ login แล้ว — ใช้ evaluatee ได้)
+GET {{baseUrl}}/api/criteria
+Authorization: Bearer {{evaluateeToken}}
+
+### 3.2 POST /api/criteria — เพิ่มหัวข้อใหม่ (✅ admin)
+### ⚠️ สังเกต: ส่ง weight=20 ไปด้วย แต่ระบบจะ "เพิกเฉย" แล้วใช้ FIXED_WEIGHT=1 เสมอ (ดู response)
+# @name createCriterion
+POST {{baseUrl}}/api/criteria
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "ความคิดสร้างสรรค์ในการทำงาน3",
+  "description": "สามารถเสนอแนวทางหรือวิธีการทำงานใหม่ ๆ ได้3",
+  "weight": 20
+}
+
+### 3.3 PUT /api/criteria/6 — แก้ไขหัวข้อ (✅ admin) — ⚠️ แก้ id ให้ตรงกับที่สร้างจาก 3.2
+PUT {{baseUrl}}/api/criteria/2
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "ความคิดสร้างสรรค์และนวัตกรรม6",
+  "description": "สามารถเสนอแนวทางหรือวิธีการทำงานใหม่ ๆ ได้อย่างเป็นระบบ6"
+}
+
+### 3.4 DELETE /api/criteria/6 — ลบหัวข้อ (✅ admin) — ⚠️ แก้ id ให้ตรงกับที่สร้างจาก 3.2 (อย่าลบ id 1-5 ที่เป็น seed หลัก)
+DELETE {{baseUrl}}/api/criteria/6
+Authorization: Bearer {{adminToken}}
+
+### 3.5 POST /api/criteria — ❌ ใช้ token ของ evaluatee (คาดหวัง 403 "ไม่มีสิทธิ์เข้าถึงข้อมูลนี้")
+POST {{baseUrl}}/api/criteria
+Content-Type: application/json
+Authorization: Bearer {{evaluateeToken}}
+
+{
+  "name": "หัวข้อทดสอบ",
+  "description": "ทดสอบสิทธิ์"
+}
+
+### 3.6 GET /api/criteria — ❌ ไม่แนบ token (คาดหวัง 401)
+GET {{baseUrl}}/api/criteria
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 4 — Evaluations : ฝั่ง Evaluatee (3 endpoint — ต้องเป็น role evaluatee เท่านั้น)
+### ════════════════════════════════════════════════════════════════
+
+### 4.1 GET /api/evaluations/me?year=2026 — ดูแบบฟอร์มประเมินตนเอง (✅ evaluatee)
+GET {{baseUrl}}/api/evaluations/me?year=2026
+Authorization: Bearer {{evaluateeToken}}
+
+### 4.2 PUT /api/evaluations/me — บันทึกคะแนนประเมินตนเอง หัวข้อที่ 1 (✅ evaluatee, UPSERT)
+PUT {{baseUrl}}/api/evaluations/me
+Content-Type: application/json
+Authorization: Bearer {{evaluateeToken}}
+
+{
+  "criterion_id": 1,
+  "self_score": 3,
+  "evidence_url": "https://drive.google.com/example-evidence-1",
+  "eval_year": 2026
+}
+
+### 4.3 PUT /api/evaluations/me — บันทึกคะแนนประเมินตนเอง หัวข้อที่ 2-5 (รันซ้ำเปลี่ยน criterion_id ทีละหัวข้อ)
+PUT {{baseUrl}}/api/evaluations/me
+Content-Type: application/json
+Authorization: Bearer {{evaluateeToken}}
+
+{
+  "criterion_id": 2,
+  "self_score": 4,
+  "evidence_url": "https://drive.google.com/example-evidence-2",
+  "eval_year": 2026
+}
+
+### 4.4 GET /api/evaluations/me/summary?year=2026 — ดูสรุป/feedback จากกรรมการ (✅ evaluatee)
+### หมายเหตุ: ถ้ากรรมการยังไม่ยืนยันส่งผล (ดู 5.4) จะได้ data: null (ไม่ใช่ error)
+GET {{baseUrl}}/api/evaluations/me/summary?year=2026
+Authorization: Bearer {{evaluateeToken}}
+
+### 4.5 PUT /api/evaluations/me — ❌ self_score นอกช่วง 1-4 (คาดหวัง 400 "คะแนนต้องเป็นจำนวนเต็ม 1-4")
+PUT {{baseUrl}}/api/evaluations/me
+Content-Type: application/json
+Authorization: Bearer {{evaluateeToken}}
+
+{
+  "criterion_id": 1,
+  "self_score": 9,
+  "eval_year": 2026
+}
+
+### 4.6 GET /api/evaluations/me — ❌ ใช้ token ของ admin (คาดหวัง 403 เพราะ endpoint นี้เฉพาะ role evaluatee)
+GET {{baseUrl}}/api/evaluations/me
+Authorization: Bearer {{adminToken}}
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 5 — Evaluations : ฝั่ง Evaluator/Admin (4 endpoint — role evaluator หรือ admin)
+### ════════════════════════════════════════════════════════════════
+GET {{baseUrl}}/api/evaluations/evaluatees?year=2026
+Authorization: Bearer {{evaluatorToken}}
+
+### 5.2 GET /api/evaluations/3?year=2026 — ดูรายละเอียด emp001 (id=3) รายคน (✅ evaluator/admin)
+GET {{baseUrl}}/api/evaluations/3?year=2026
+Authorization: Bearer {{evaluatorToken}}
+
+### 5.3 PUT /api/evaluations/3 — กรรมการให้คะแนน emp001 หัวข้อที่ 1 (✅ evaluator/admin, UPSERT)
+### รันซ้ำ 5 ครั้งเปลี่ยน criterion_id เป็น 1,2,3,4,5 เพื่อให้ครบก่อนจะ submit ได้ (ดู 5.4)
+PUT {{baseUrl}}/api/evaluations/3
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "criterion_id": 1,
+  "evaluator_score": 3,
+  "eval_year": 2026
+}
+
+### 5.3b PUT /api/evaluations/3 — ให้คะแนนหัวข้อที่ 2 (ตัวอย่างการรันซ้ำ)
+PUT {{baseUrl}}/api/evaluations/3
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "criterion_id": 2,
+  "evaluator_score": 4,
+  "eval_year": 2026
+}
+
+### 5.3c PUT /api/evaluations/3 — ให้คะแนนหัวข้อที่ 3
+PUT {{baseUrl}}/api/evaluations/3
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "criterion_id": 3,
+  "evaluator_score": 3,
+  "eval_year": 2026
+}
+
+### 5.3d PUT /api/evaluations/3 — ให้คะแนนหัวข้อที่ 4
+PUT {{baseUrl}}/api/evaluations/3
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "criterion_id": 4,
+  "evaluator_score": 4,
+  "eval_year": 2026
+}
+
+### 5.3e PUT /api/evaluations/3 — ให้คะแนนหัวข้อที่ 5 (ครบ 5/5 แล้ว พร้อม submit ได้)
+PUT {{baseUrl}}/api/evaluations/3
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "criterion_id": 5,
+  "evaluator_score": 4,
+  "eval_year": 2026
+}
+
+### 5.4 POST /api/evaluations/3/submit — ยืนยันส่งผลการประเมิน (✅ evaluator/admin)
+### ต้องให้คะแนนครบทุกหัวข้อก่อน (5/5) ไม่งั้นจะได้ 400 "กรุณาให้คะแนนกรรมการให้ครบก่อนยืนยัน (x/5)"
+POST {{baseUrl}}/api/evaluations/3/submit
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "overall_feedback": "ปฏิบัติงานได้ดี มีความรับผิดชอบสูง ควรพัฒนาการทำงานเป็นทีมเพิ่มเติม",
+  "eval_year": 2026
+}
+
+### 5.5 POST /api/evaluations/3/submit — ❌ ลองยิงตอนให้คะแนนยังไม่ครบ (คาดหวัง 400 บอกจำนวนที่ให้แล้ว/ทั้งหมด)
+### ทดสอบกับ emp002 (id=4) ที่ยังไม่มีใครให้คะแนนเลย
+POST {{baseUrl}}/api/evaluations/4/submit
+Content-Type: application/json
+Authorization: Bearer {{evaluatorToken}}
+
+{
+  "overall_feedback": "ทดสอบก่อนให้คะแนนครบ",
+  "eval_year": 2026
+}
+
+### 5.6 GET /api/evaluations/999?year=2026 — ❌ ไม่มี evaluatee id นี้จริง (คาดหวัง 404 "ไม่พบผู้รับการประเมิน")
+GET {{baseUrl}}/api/evaluations/999?year=2026
+Authorization: Bearer {{evaluatorToken}}
+
+### 5.7 GET /api/evaluations/evaluatees — ❌ ใช้ token evaluatee (คาดหวัง 403 เพราะ endpoint นี้เฉพาะ evaluator/admin)
+GET {{baseUrl}}/api/evaluations/evaluatees
+Authorization: Bearer {{evaluateeToken}}
+
+
+### ════════════════════════════════════════════════════════════════
+### กลุ่ม 6 — Report (1 endpoint: admin, evaluator)
+### ════════════════════════════════════════════════════════════════
+
+### 6.1 GET /api/report?year=2026 — รายงานสรุปผลทุกคน (✅ admin)
+### รันหลังจาก submit (5.4) แล้วจะเห็น result ของ emp001 เปลี่ยนจาก "ยังไม่ประเมิน" เป็นผลจริง
+GET {{baseUrl}}/api/report?year=2026
+Authorization: Bearer {{adminToken}}
+
+### 6.2 GET /api/report?year=2026 — รายงานเดียวกัน แต่ใช้สิทธิ์ evaluator (✅ evaluator ก็เข้าถึงได้)
+GET {{baseUrl}}/api/report?year=2026
+Authorization: Bearer {{evaluatorToken}}
+
+### 6.3 GET /api/report — ❌ ใช้ token ของ evaluatee (คาดหวัง 403 "ไม่มีสิทธิ์เข้าถึงข้อมูลนี้")
+GET {{baseUrl}}/api/report
+Authorization: Bearer {{evaluateeToken}}
+
+
+### ════════════════════════════════════════════════════════════════
+### สรุปสำหรับสอน: ลำดับ workflow แนะนำให้ทดลองครบวงจร
+### ══════════════════════════════════════════════
+### 1) 1.1-1.3 login ให้ครบ 3 role ก่อน (admin, evaluator, evaluatee)
+### 2) 3.1 ดูหัวข้อประเมินที่มีอยู่แล้ว (seed 5 หัวข้อ)
+### 3) 4.1-4.3 ฝั่ง evaluatee: ดูฟอร์ม แล้วให้คะแนนตัวเองทีละหัวข้อ (ครบ 5 หัวข้อ)
+### 4) 5.1-5.2 ฝั่งกรรมการ: ดูรายชื่อ แล้วดูรายละเอียดคนที่จะให้คะแนน
+### 5) 5.3-5.3e ให้คะแนนกรรมการครบ 5 หัวข้อ
+### 6) 5.4 ยืนยันส่งผล (submit)
+### 7) 4.4 กลับไปฝั่ง evaluatee ดู summary/feedback ที่กรรมการเขียนไว้
+### 8) 6.1 ดูรายงานสรุปภาพรวมทุกคน (admin)
+### ════════════════════════════════════════════════════════════════
